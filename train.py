@@ -28,7 +28,7 @@ def train_model(model, in_dim, classes, optim_type, loss_fn, batch_size, n_epoch
 
     elif model == "ResNet":
         from models import ResNet
-        net = ResNet.resnet34(in_dim=3, num_classes=classes).to(device)
+        net = ResNet.resnet34(in_dim=in_dim, num_classes=classes).to(device)
 
     print("dimension of input: {}, classes: {}.".format(in_dim, classes))
 
@@ -60,113 +60,51 @@ def train_model(model, in_dim, classes, optim_type, loss_fn, batch_size, n_epoch
     elif optim_type == "Adam":
         optimizer = optim.Adam(net.parameters(), lr=learning_rate)
 
-    def trainer(n_epochs):
-        net.train()
-        loss_over_time = []  # to track the loss as the network trains
 
-        for epoch in range(n_epochs):  # loop over the dataset multiple times
+    def trainer(num_epochs):
+        for epoch in range(num_epochs):
             if saved_epoch:
                 output_epoch = epoch + saved_epoch
             else:
                 output_epoch = epoch
+            print('current epoch = {}'.format(output_epoch))
+            for i, (images, labels) in enumerate(train_loader):
+                train_accuracy_total = 0
+                train_correct = 0
+                train_loss_sum = 0
+                net.train()
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = net(images)
+                loss = criterion(outputs, labels)   # 计算模型的损失
+                optimizer.zero_grad()            # 在做反向传播前先清除网络状态
+                loss.backward()                  # 损失值进行反向传播
+                optimizer.step()                 # 参数迭代更新
 
-            running_loss = 0.0
-
-            for batch_i, data in enumerate(train_loader):
-                # get the input images and their corresponding labels
-                inputs, labels = data
-                inputs, labels = inputs.to(device), labels.to(device)
-
-                # zero the parameter (weight) gradients
-                optimizer.zero_grad()
-
-                # forward pass to get outputs
-                outputs = net(inputs)
-
-                # calculate the loss
-                loss = criterion(outputs, labels.long().to(device))
-                # backward pass to calculate the parameter gradients
-                loss.backward()
-
-                # update the parameters
-                optimizer.step()
-
-                # print loss statistics
-                # to convert loss into a scalar and add it to running_loss, we use .item()
-                running_loss += loss.item()
-
-                if batch_i % 45 == 44:  # print every 45 batches
-                    avg_loss = running_loss / 45
-                    # record and print the avg loss over the 100 batches
-                    loss_over_time.append(avg_loss)
-                    print('Epoch: {}, Batch: {}, Avg. Loss: {}'.format(output_epoch + 1, batch_i + 1, avg_loss))
-                    running_loss = 0.0
-
-            if output_epoch == 49 or output_epoch == 99:  # save every 100 epochs
-                torch.save(net.state_dict(), './Models/saved_models/{}_{}.pt'.format(model, output_epoch + 1))
-
-        print('Finished Training')
-        return loss_over_time
-
-    if saved_epoch:
-        net.load_state_dict(torch.load('./saved_models/{}_{}.pt'.format(model, saved_epoch)))
-
-    # call train and record the loss over time
-    training_loss = trainer(n_epochs)
-
+                train_loss_sum += loss.item()    # item()返回的是tensor中的值，且只能返回单个值（标量），不能返回向量，使用返回loss等
+                _,predicts = torch.max(outputs.data,dim=1)  # 输出10类中最大的那个值
+                train_accuracy_total += labels.size(0)
+                train_correct += (predicts == labels).cpu().sum().item()
+            test_acc = evaluate_accuracy(test_loader,model)
+            print('epoch:{0},   loss:{1:.4f},   train accuracy:{2:.3f},  test accuracy:{3:.3f}'.format(
+                    output_epoch, train_loss_sum/batch_size, train_correct/train_accuracy_total, test_acc))
+        print('------------finish training-------------')
     
-    # initialize tensor and lists to monitor test loss and accuracy
-    test_loss = torch.zeros(1).to(device)
-    class_correct = list(0. for i in range(len(classes)))
-    class_total = list(0. for i in range(len(classes)))
+    def evaluate_accuracy(data_iter, model):
+        '''
+            模型预测精度
+        '''
+        total = 0
+        correct = 0 
+        with torch.no_grad():
+            model.eval()
+            for images, labels in data_iter:
+                images = images.to(device)
+                labels = labels.to(device)
+                outputs = model(images)
+                _,predicts = torch.max(outputs.data, dim=1)
+                total += labels.size(0)
+                correct += (predicts == labels).cpu().sum().numpy()
+        return  correct / total
 
-    # set the module to evaluation mode
-    # used to turn off layers that are only useful for training
-    # like dropout and batch_norm
-    net.eval()
-
-    for batch_i, data in enumerate(test_loader):
-
-        # get the input images and their corresponding labels
-        inputs, labels = data
-        inputs, labels = inputs.to(device), labels.to(device)
-
-        # forward pass to get outputs
-        outputs = net(inputs)
-
-        # calculate the loss
-        loss = criterion(outputs, labels.long().to(device))
-
-        # update average test loss
-        test_loss = test_loss + ((torch.ones(1).to(device) / (batch_i + 1)) * (loss.data - test_loss))
-
-        # get the predicted class from the maximum value in the output-list of class scores
-        _, predicted = torch.max(outputs.data, 1)
-
-        # compare predictions to true label
-        # this creates a `correct` Tensor that holds the number of correctly classified images in a batch
-        correct = np.squeeze(predicted.eq(labels.data.view_as(predicted)))
-
-        # calculate test accuracy for *each* object class
-        # we get the scalar value of correct items for a class, by calling `correct[i].item()`
-        for l, c in zip(labels.data, correct):
-            class_correct[l] += c.item()
-            class_total[l] += 1
-
-    print('Test Loss: {:.6f}\n'.format(test_loss.cpu().numpy()[0]))
-
-    for i in range(len(classes)):
-        if class_total[i] > 0:
-            print('Test Accuracy of %30s: %2d%% (%2d/%2d)' % (
-                classes[i], 100 * class_correct[i] / class_total[i],
-                np.sum(class_correct[i]), np.sum(class_total[i])))
-        else:
-            print('Test Accuracy of %5s: N/A (no training examples)' % (classes[i]))
-
-    print('\nTest Accuracy (Overall): %2d%% (%2d/%2d)' % (
-        100. * np.sum(class_correct) / np.sum(class_total),
-        np.sum(class_correct), np.sum(class_total)))
-
-
-
-
+    trainer(n_epochs)

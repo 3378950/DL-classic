@@ -6,7 +6,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='PyTorch DML Training')
     parser.add_argument('--model', help='model', default="VGG", type=str)
     parser.add_argument('--in_dim', help='dimonsion of input', default=1, type=int)
-    parser.add_argument('--classes', help='number of classes', default=120, type=int)
+    parser.add_argument('--classes', help='number of classes', default=10, type=int)
     parser.add_argument('--optim', help='optimizer', default="SGD", type=str)
     parser.add_argument('--loss_fn', help='loss function', default="cross entropy", type=str)
     parser.add_argument('--batch_size', help='Batch_size', default=16, type=int)

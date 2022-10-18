@@ -19,12 +19,12 @@ def load_datasets(set_name='mnist', input_size=224, batch_size=16):
                     T.Resize((input_size,input_size)),
                     T.ToTensor()
         ])
-
-        train_dataset = datasets.MNIST(root=os.path.join(config.imagesets, 'MNIST'),
+        # root=os.path.join(config.imagesets, 'MNIST')
+        train_dataset = datasets.MNIST(root=config.imagesets,
                                        train=True,
                                        transform=train_transform,
                                        download=True)
-        test_dataset = datasets.MNIST(root=os.path.join(config.imagesets, 'MNIST'),
+        test_dataset = datasets.MNIST(root=config.imagesets,
                                       train=False,
                                       transform=test_transform)
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
